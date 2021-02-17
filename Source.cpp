@@ -58,7 +58,7 @@ struct axis
 		}
 		else
 		{
-			for (int i = 0; i < num_knots - 1; i++)
+			for (int i = 1; i < num_knots - 1; i++)
 			{
 				//all_knots[i] = all_knots[i - 1] + step;
 
@@ -85,7 +85,7 @@ void write_A(matrix* A)
 	cout << "/-------------------------------" << endl;
 	cout << "ƒиагональ 1 (верхн€€)" << endl;
 
-	for (int i = 0; i < A->n; i++)
+	for (int i = 0; i < A->n-1; i++)
 	{
 		cout << i << " : " << A->du_1[i] << endl;
 	}
@@ -93,7 +93,7 @@ void write_A(matrix* A)
 	cout << "/-------------------------------" << endl;
 	cout << "ƒиагональ 1 (нижн€€)" << endl;
 
-	for (int i = 0; i < A->n; i++)
+	for (int i = 0; i < A->n-1; i++)
 	{
 		cout << i << " : " << A->dl_1[i] << endl;
 	}
@@ -101,7 +101,7 @@ void write_A(matrix* A)
 	cout << "/-------------------------------" << endl;
 	cout << "ƒиагональ " << A->offset << " (верхн€€)" << endl;
 
-	for (int i = 0; i < A->n; i++)
+	for (int i = 0; i < A->n-A->offset; i++)
 	{
 		cout << i << " : " << A->du_offset[i] << endl;
 	}
@@ -109,7 +109,7 @@ void write_A(matrix* A)
 	cout << "/-------------------------------" << endl;
 	cout << "ƒиагональ " << A->offset << " (нижн€€)" << endl;
 
-	for (int i = 0; i < A->n; i++)
+	for (int i = 0; i < A->n - A->offset; i++)
 	{
 		cout << i << " : " << A->dl_offset[i] << endl;
 	}
@@ -345,98 +345,77 @@ void write_axis(axis* ax)
 }
 
 
-double iter(matrix* A, double* b, double* xn, double* x, double fnorm)
+real skal(int i, matrix* mat, real* xk) // —кал€рное произведение i-ой строки матрицы с вектором xk
 {
-	double* du2 = A->du_offset;
-	double* du1 = A->du_1;
-	double* d0 = A->d_0;
-	double* dl1 = A->dl_1;
-	double* dl2 = A->dl_offset;
+	real sum = mat->d_0[i] * xk[i];
+	int n = mat->n;
+	int m = mat->offset-1;
+	if (i > 0) sum += mat->dl_1[i - 1] * xk[i - 1];
+	if (i < n - 1) sum += mat->du_1[i] * xk[i + 1];
 
-	int k1 = 1;
-	int km = A->offset;
+	int ind;
+	ind = i - m - 1;
+	if (ind > -1)
+		sum += mat->dl_offset[ind] * xk[ind];
 
-	double descrep = 0;
-	int n = A->n;
-	for (int i = 0; i < n; ++i)
-	{
-		double sum = d0[i] * x[i];
-		if (i - k1 >= 0)
-		{
-			sum += du1[i - k1] * x[i - k1];
-		}
+	ind = i + m + 1;
+	if (ind < n)
+		sum += mat->du_offset[i] * xk[ind];
 
-		if (i - km >= 0)
-		{
-			sum += du2[i - km] * x[i - km];
-		}
-
-		if (i + k1 < n)
-		{
-			sum += dl1[i] * x[i + k1];
-		}
-
-		if (i + km < n)
-		{
-			sum += dl2[i] * x[i + km];
-		}
-
-		descrep += (b[i] - sum) * (b[i] - sum);
-
-		xn[i] = x[i] + (b[i] - sum) / d0[i];
-
-	}
-
-	descrep = sqrt(descrep);
-
-	return descrep / fnorm;
+	return sum;
 }
 
-double* iterZeid(matrix* A, double* b)
-
+real err(matrix* mat, real* f, real* xk, real f_norm)
 {
-	int n = A->n;
-	int countIter = 0;
-
-	double* x = new double[n];
-
-	double* xn = new double[n];
-
-	double fnorm = 0;
-
-	for (int i = 0; i < n; ++i)
-
+	int n = mat->n;
+	real sum = 0;
+	real buf;
+	for (int i = 0; i < n; i++)
 	{
-
-		x[i] = xn[i] = 0;
-
-		fnorm += b[i];
-
+		buf = f[i] - skal(i, mat, xk);
+		sum += buf * buf;
 	}
 
-	fnorm = sqrt(fnorm);
-
-	for (int i = 0; i < n; ++i)
-
-		x[i] = xn[i] = 0;
-
-	double descrep = iter(A, b, xn, x, fnorm);
-	int maxIter = 100000000000000;
-	double eps = 1e-10;
-	for (countIter = 0; countIter <= maxIter && descrep > eps; ++countIter)
-
-	{
-
-		descrep = iter(A, b, x, x, fnorm);
-
-	}
-
-	delete[] xn;
-
-	return x;
-
+	return sqrt(sum) / f_norm;
 }
-void main()
+
+int Gausse_Zeidel(matrix* mat, real* f, real* xk, real eps, int maxiter)
+{
+	write_A(mat);
+	cout << "Gausse Zeidel" << endl;
+	int n = mat->n;
+	int k; // —чЄтчик итераций
+	int i;
+	real* d0 = mat->d_0;
+	real f_norm = 0;
+	double W = 1;
+	for (i = 0; i < n; i++)
+		f_norm += f[i] * f[i];
+	f_norm = sqrt(f_norm);
+
+
+
+	real err_k = err(mat, f, xk, f_norm);
+	for (k = 0; k < maxiter && err_k > eps; k++)
+	{
+		for (i = 0; i < n; i++)
+			xk[i] += W / d0[i] * (f[i] - skal(i, mat, xk));
+		/*
+		cout << "xk" << endl;
+		for (i = 0; i < n; i++)
+		cout << xk[i] << endl;
+		cout << endl;
+		*/
+		err_k = err(mat, f, xk, f_norm);
+		cout << "Iteration Number " << k << " Error: " << "  " << err_k << endl;
+	}
+	if (k == maxiter)
+		cout << "Limit of iterations is overrided";
+
+	return 0;
+}
+
+int main()
 {
 	setlocale(LC_ALL, "rus");
 
@@ -490,12 +469,14 @@ void main()
 	for (int i = 0; i < A->n; i++)
 		cout << b[i] << " ";
 
-	double* q = iterZeid(A, b);
+	double* xk = new double[A->n]{1};
+	Gausse_Zeidel(A, b, xk, 1e-8, 1000000000);
 
 	cout << "/-------------------" << endl;
 	cout << "¬ектор q" << endl;
 
 	for (int i = 0; i < A->n; i++)
-		cout << q[i] << endl;
+		cout << xk[i] << endl;
 
+	return 0;
 }
