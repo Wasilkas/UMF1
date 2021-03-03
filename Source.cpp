@@ -1,4 +1,4 @@
-#include <fstream>
+п»ї#include <fstream>
 #include <iostream>
 #include <vector>
 #include <map>
@@ -8,13 +8,13 @@ using namespace std;
 
 struct matrix
 {
-	int n;   // размерность матрицы
-	int offset;   // смещение
-	vector<double> d_0;   // главная диагональ
-	vector<double> du_1;   // верхняя диагональ со смещением 1
-	vector<double> du_offset;   // верхняя диагональ со смещением offset
-	vector<double> dl_1;	// нижняя диагональ со смещением 1
-	vector<double> dl_offset;	// нижняя диагональ со смещением offset
+	int n;   // СЂР°Р·РјРµСЂРЅРѕСЃС‚СЊ РјР°С‚СЂРёС†С‹
+	int offset;   // СЃРјРµС‰РµРЅРёРµ
+	vector<double> d_0;   // РіР»Р°РІРЅР°СЏ РґРёР°РіРѕРЅР°Р»СЊ
+	vector<double> du_1;   // РІРµСЂС…РЅСЏСЏ РґРёР°РіРѕРЅР°Р»СЊ СЃРѕ СЃРјРµС‰РµРЅРёРµРј 1
+	vector<double> du_offset;   // РІРµСЂС…РЅСЏСЏ РґРёР°РіРѕРЅР°Р»СЊ СЃРѕ СЃРјРµС‰РµРЅРёРµРј offset
+	vector<double> dl_1;	// РЅРёР¶РЅСЏСЏ РґРёР°РіРѕРЅР°Р»СЊ СЃРѕ СЃРјРµС‰РµРЅРёРµРј 1
+	vector<double> dl_offset;	// РЅРёР¶РЅСЏСЏ РґРёР°РіРѕРЅР°Р»СЊ СЃРѕ СЃРјРµС‰РµРЅРёРµРј offset
 
 	matrix(int n, int offset)
 	{
@@ -28,23 +28,35 @@ struct matrix
 	}
 };
 
+enum sides
+{
+	s_left,
+	s_right,
+	s_bottom,
+	s_top
+};
+
 double CountFirstStep(double begin, double end, int num_steps, double q);
-void ReadGrid(string name_file, vector<double>* grid);
+void ReadGrid(string name_file, vector<double>* grid, vector<int>* nums_main_knots);
+void ReadRects(string name_file, int num_rects_x, int num_rects_y, vector<vector<bool>>* fullness);
 void FillingKnotsIN(double lambda, double gamma, vector<double> x, vector<double> y, matrix* A, double* b);
-vector <int> SearchBoundKnots(int x_num_all_knots, int y_num_all_knots, int num_all_knots);
+void SearchBoundKnots(int x_num_all_knots, int y_num_all_knots, vector<int>* bound_knots);
+void SearchFictKnots(vector<int> x_num_mains, vector<int> y_num_mains, vector<vector<bool>> fullness, vector<int>* fict_knots);
+void checkFictKnots(vector<int> x_num_mains, vector<int> y_num_mains, vector<int>* fict_knots, vector<int>* bound_knots);
 void AccountBound(vector<double> x, vector<double> y, matrix* A, double* b, vector <int> bound_knots);
-double Skal(int i, matrix* mat, double* xk); // Скалярное произведение i-ой строки матрицы с вектором xk
+void AccountFict(int x_size, matrix* A, double* b, vector <int> fict_knots);
+double Skal(int i, matrix* mat, double* xk);
 double Err(matrix* mat, double* f, double* xk, double f_norm);
 int Gausse_Zeidel(matrix* mat, double* f, double* xk, double eps, int maxiter);
 
 double count_bound_func(double X, double Y)
 {
-	return X * X * X * X;
+	return X * X * X;
 }
 
 double count_func(double X, double Y)
 {
-	return 2. * X * X * X * X - 12. * X * X;
+	return 2.*X*X*X - 6. * X;
 }
 
 void write(matrix* A)
@@ -81,10 +93,15 @@ void main()
 	setlocale(LC_ALL, "rus");
 
 	vector<double> x_grid;
-	ReadGrid("x_input.txt", &x_grid);
+	vector<int> x_nums_main_knots;
+	ReadGrid("x_input.txt", &x_grid, &x_nums_main_knots);
 
 	vector<double> y_grid;
-	ReadGrid("y_input.txt", &y_grid);
+	vector<int> y_nums_main_knots;
+	ReadGrid("y_input.txt", &y_grid, &y_nums_main_knots);
+
+	vector<vector<bool>> fullness;
+	ReadRects("rects.txt", x_nums_main_knots.size() - 1, y_nums_main_knots.size() - 1, &fullness);
 
 	ifstream coeff_input("coeff_input.txt");
 	double lambda, gamma;
@@ -94,23 +111,21 @@ void main()
 	matrix* A = new matrix(x_grid.size() * y_grid.size(), x_grid.size());
 	double* b = new double[A->n];
 	FillingKnotsIN(lambda, gamma, x_grid, y_grid, A, b);
+	vector <int> bound_knots;
+	SearchBoundKnots(x_grid.size(), y_grid.size(), &bound_knots);
+	
+	vector<int> fict_knots;
+	SearchFictKnots(x_nums_main_knots, y_nums_main_knots, fullness, &fict_knots);
 
-	vector <int> bound_knots = SearchBoundKnots(x_grid.size(), y_grid.size(), A->n);
+	checkFictKnots(x_nums_main_knots, y_nums_main_knots, &fict_knots, &bound_knots);
+
 	AccountBound(x_grid, y_grid, A, b, bound_knots);
-
-	//write(A);
-
+	AccountFict(x_grid.size(),A,b,fict_knots);
+	
 	double* q = new double[A->n];
-	Gausse_Zeidel(A, b, q, 1e-10, 1e+10);
+	Gausse_Zeidel(A, b, q, 1e-11, 1e+11);
 
-	cout << "Вектор правой части : ";
-
-	//for (int i = 0; i < A->n;i++)
-	//{
-	//	cout << i << " : " << b[i] << endl;
-	//}
-
-	cout << "Результат : \n";
+	cout << "Р РµР·СѓР»СЊС‚Р°С‚ : \n";
 	for (int i = 0; i < A->n; i++)
 	{
 		int X_ind = i % x_grid.size();
@@ -121,7 +136,6 @@ void main()
 
 }
 
-
 double CountFirstStep(double begin, double end, int num_steps, double q)
 {
 	double h0;
@@ -131,108 +145,283 @@ double CountFirstStep(double begin, double end, int num_steps, double q)
 	return h0;
 }
 
-void ReadGrid(string name_file, vector<double>* grid)
+void ReadGrid(string name_file, vector<double>* grid, vector<int>* nums_main_knots )
 {
 	ifstream in(name_file);
 
-	double begin, end, num_steps, q;
+	int num_main_knots;
 
-	in >> begin >> end;
-
-	in >> num_steps;
-
-	in >> q;
-
-	in.close();
-
-	double h0 = CountFirstStep(begin, end, num_steps, q);
-
-	double coord = begin;
-	double h = h0;
-	while (coord < end)
+	in >> num_main_knots;
+	int all_num_steps = 0;
+	double coord;
+	for (int i = 0; i < num_main_knots - 1; i++)
 	{
-		grid->push_back(coord);
-		coord += h;
-		h *= q;
-	}
+		double begin, end, q;
+		int  num_steps;
+		in >> begin >> end;
+		
+		in >> num_steps;
+		nums_main_knots->push_back(all_num_steps);
+		all_num_steps += num_steps;
+		in >> q;
 
-	grid->push_back(end);
+		double h0 = CountFirstStep(begin, end, num_steps, q);
+
+		double h = h0;
+
+		coord = i ? begin + h : begin;
+	
+		while (coord < end)
+		{
+			grid->push_back(coord);
+			coord += h;
+			h *= q;
+		}
+
+		grid->push_back(end);
+	}
+	nums_main_knots->push_back(all_num_steps);
+	in.close();
+}
+
+void ReadRects(string name_file, int num_rects_x, int num_rects_y, vector<vector<bool>>* fullness)
+{
+	ifstream in(name_file);
+
+	bool is_full;
+	for (int i = 0; i < num_rects_y; i++)
+	{
+		vector<bool> str;
+		for (int j = 0; j < num_rects_x; j++)
+		{
+			in >> is_full;
+			str.push_back(is_full);
+		}
+		fullness->push_back(str);
+	}
 }
 
 void FillingKnotsIN(double lambda, double gamma, vector<double> x, vector<double> y, matrix* A, double* b)
 {
 
-	int x_num_knots = x.size();
-	int min_index = x_num_knots;
-	int max_index = A->n - min_index;
-
-	// Проходим по узлам, не затрагивая нижнюю и верхнюю грани
-	for (int i = min_index; i < max_index; i++)
+	int x_max_ind = x.size() - 1;
+	int y_max_ind = y.size() - 1;
+	
+	// РџСЂРѕС…РѕРґРёРј РїРѕ СѓР·Р»Р°Рј, РЅРµ Р·Р°С‚СЂР°РіРёРІР°СЏ РЅРёР¶РЅСЋСЋ Рё РІРµСЂС…РЅСЋСЋ РіСЂР°РЅРё
+	for (int i = 1; i < x_max_ind; i++)
 	{
-		int X_ind = i % x_num_knots;	// определение локального узла на оси х по глобальному
-
-		if (X_ind && X_ind != x_num_knots - 1)
+		for (int j = 1 ; j < y_max_ind; j++)
 		{
-			int Y_ind = i / x_num_knots;	// определение локального узла на оси y по глобальному
-			double h_x_i = x[X_ind + 1] - x[X_ind];	// шаг справа от узла
-			double h_x_i_1 = x[X_ind] - x[X_ind - 1];	// шаг слева от узла
+			double h_right = x[i + 1] - x[i];	// С€Р°Рі СЃРїСЂР°РІР° РѕС‚ СѓР·Р»Р°
+			double h_left = x[i] - x[i - 1];	// С€Р°Рі СЃР»РµРІР° РѕС‚ СѓР·Р»Р°
 
-			double h_y_j = y[Y_ind + 1] - y[Y_ind];	// шаг сверху от узла
-			double h_y_j_1 = y[Y_ind] - y[Y_ind - 1];	// шаг снизу от узла
+			double h_top = y[j + 1] - y[j];		// С€Р°Рі СЃРІРµСЂС…Сѓ РѕС‚ СѓР·Р»Р°
+			double h_bottom = y[j] - y[j - 1];	// С€Р°Рі СЃРЅРёР·Сѓ РѕС‚ СѓР·Р»Р°
 
-
-			// 1 / (h_x_i_1 * h_x_i) + 1 / (h_y_j_1 * h_y_j) = (h_y_j_1 * h_y_j + h_x_i_1 * h_x_i) / (h_y_j_1 * h_y_j * h_x_i_1 * h_x_i)
-			A->d_0[i] = lambda * 2. * ((h_y_j_1 * h_y_j + h_x_i_1 * h_x_i) / (h_y_j_1 * h_y_j * h_x_i_1 * h_x_i)) + gamma;
-			A->dl_1[i - 1] = -lambda * 2. / (h_x_i_1 * (h_x_i + h_x_i_1));
-			A->du_1[i] = -lambda * 2. / (h_x_i * (h_x_i + h_x_i_1));
-			A->dl_offset[i - A->offset] = -lambda * 2. / (h_y_j_1 * (h_y_j + h_y_j_1));
-			A->du_offset[i] = -lambda * 2. / (h_y_j * (h_y_j + h_y_j_1));
-			b[i] = count_func(x[X_ind], y[Y_ind]);
+			int ind = (x_max_ind + 1) * j + i;
+			
+			A->d_0[ind] = lambda * 2. * ((h_bottom * h_top + h_left * h_right) / (h_bottom * h_top * h_left * h_right)) + gamma;
+			A->dl_1[ind - 1] = -lambda * 2. / (h_left * (h_right + h_left));
+			A->du_1[ind] = -lambda * 2. / (h_right * (h_right + h_left));
+			A->dl_offset[ind - A->offset] = -lambda * 2. / (h_bottom * (h_top + h_bottom));
+			A->du_offset[ind] = -lambda * 2. / (h_top * (h_top + h_bottom));
+			b[ind] = count_func(x[i], y[j]);
 		}
 	}
 }
 
-vector <int> SearchBoundKnots(int x_num_all_knots, int y_num_all_knots, int num_all_knots)
+void SearchBoundKnots(int x_num_all_knots, int y_num_all_knots, vector<int>* bound_knots)
 {
-	vector <int> bound_knots;
+	int left_border = 0;
+	int right_border = x_num_all_knots - 1;
 
-	int X_ind_left_bound = 0;
-	int X_ind_right_bound = x_num_all_knots - 1;
+	int bottom_border = 0;
+	int top_border = y_num_all_knots - 1;
 
-	int Y_ind_bottom_bound = 0;
-	int Y_ind_top_bound = y_num_all_knots - 1;
-
-	for (int i = 0; i < num_all_knots; i++)
+	for (int i = 0; i < x_num_all_knots; i++)
 	{
-		int X_ind = i % x_num_all_knots;
-		int Y_ind = i / x_num_all_knots;
-
-		if (Y_ind == Y_ind_bottom_bound || Y_ind == Y_ind_top_bound)
+		for (int j = 0; j < y_num_all_knots; j++)
 		{
-			bound_knots.push_back(i);
-		}
-		else
-		{
-			if (X_ind == X_ind_left_bound || X_ind == X_ind_right_bound)
+			int ind = x_num_all_knots * j + i;
+			if (j == bottom_border || j == top_border)
 			{
-				bound_knots.push_back(i);
+				bound_knots->push_back(ind);
+			}
+			else
+			{
+				if (i == left_border || i == right_border)
+				{
+					bound_knots->push_back(ind);
+				}
 			}
 		}
 	}
+}
 
-	return bound_knots;
+bool findKnot(vector<int> knots, int knot)
+{
+	vector<int>::iterator it = knots.begin();
+
+	while (it != knots.end()) {
+		if (*it == knot) {
+			return 1;
+			break;
+		}
+		it++;
+	}
+	if (it == knots.end()) return 0;
+}
+
+void SearchFictKnots(vector<int> x_num_mains, vector<int> y_num_mains, vector<vector<bool>> fullness, vector<int>* fict_knots)
+{
+	int x_size = x_num_mains[x_num_mains.size() - 1] + 1;
+
+	int i_num_rects_y = y_num_mains.size() - 1;
+	int j_num_rects_x = x_num_mains.size() - 1;
+
+	for (int i = 0; i < i_num_rects_y; i++)
+	{
+		int y_begin = y_num_mains[i];
+		int y_end = y_num_mains[i + 1];
+
+		for (int j = 0; j < j_num_rects_x; j++)
+		{
+			int x_begin = x_num_mains[j];
+			int x_end = x_num_mains[j + 1];
+
+			bool full = fullness[i][j];
+
+			if (!full)	// Р•СЃР»Рё РїСЂСЏРјРѕСѓРіРѕР»СЊРЅРёРє С„РёРєС‚РёРІРЅС‹Р№
+			{
+				for (int y = y_begin; y <= y_end; y++)
+				{
+					for (int x = x_begin; x <= x_end; x++)
+					{
+						int ind = x_size * y + x;
+						if (!findKnot(*fict_knots, ind))
+							fict_knots->push_back(ind);	// Р—Р°РїРёСЃС‹РІР°РµРј РІСЃРµ СѓР·Р»С‹ РїСЂСЏРјРѕСѓРіРѕР»СЊРЅРёРєР° РєР°Рє С„РёРєС‚РёРІРЅС‹Рµ
+					}
+				}
+			}
+		}
+	}
+}
+
+void findIsEmptyNearKnots(vector<int> knots, int ind, int x_size, bool* empty)
+{
+	empty[0] = findKnot(knots, ind - 1);	// РџСѓСЃС‚РѕР№ Р»Рё Р»РµРІС‹Р№ СѓР·РµР»
+	empty[1] = findKnot(knots, ind + 1);	// РџСѓСЃС‚РѕР№ Р»Рё РїСЂР°РІС‹Р№ СѓР·РµР»
+	empty[2] = findKnot(knots, ind - x_size);	// РџСѓСЃС‚РѕР№ Р»Рё РЅРёР¶РЅРёР№ СѓР·РµР»
+	empty[3] = findKnot(knots, ind + x_size);	// РџСѓСЃС‚РѕР№ Р»Рё РІРµСЂС…РЅРёР№ СѓР·РµР»
+}
+
+void findNearKnots(int ind, int x_size, int* nears)
+{
+	int x_ind = ind % x_size;
+	int y_ind = ind / x_size;
+
+	nears[s_left] = x_ind - 1;
+	nears[s_right] = x_ind + 1;
+	nears[s_bottom] = y_ind + 1;
+	nears[s_top] = y_ind - 1;
+}
+
+void checkCornerKnots(int* borders, vector<int> old_knots, vector<int> fict_knots, vector<int>* new_knots)
+{
+	int x_size = borders[s_right] + 1;
+	// РїРµСЂРµРїСЂРѕРІРµСЂРєР°. РІРґСЂСѓРі СѓР·Р»РѕРІС‹Рµ
+	for (int i = 0; i < old_knots.size(); i++)
+	{
+		int ind = old_knots[i];
+
+		int nears[4];
+		findNearKnots(ind, x_size, nears);
+
+		if (nears[s_left] >= borders[s_left] &&
+			nears[s_right] <= borders[s_right] &&
+			nears[s_bottom] >= borders[s_bottom] &&
+			nears[s_top] <= borders[s_top])
+		{
+			// Р Р°СЃСЃРјР°С‚СЂРёРІР°РµРј СѓР·Р»С‹ РЅРµ РЅР° РіСЂР°РЅРёС†Рµ
+			bool empty[4];
+			findIsEmptyNearKnots(fict_knots, ind, x_size, empty);
+
+			if (empty[s_left] || empty[s_right] || empty[s_bottom] || empty[s_top])	// Р•СЃР»Рё С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ СѓР·РµР» РїСѓСЃС‚РѕР№
+			{
+				new_knots->push_back(ind);
+			}
+		}
+		else
+			new_knots->push_back(ind);
+	}
+}
+
+void checkAllKnots(int* borders, vector<int> fict_knots, vector<int>* new_fict_knots, vector<int>* new_bound_knots)
+{
+	int x_size = borders[s_right] + 1;
+	// РїРµСЂРµРїСЂРѕРІРµСЂРєР°. РІРґСЂСѓРі СѓР·Р»РѕРІС‹Рµ
+	for (int i = 0; i < fict_knots.size(); i++)
+	{
+		int ind = fict_knots[i];
+
+		int nears[4];
+		findNearKnots(ind, x_size, nears);
+
+		bool empty[4];
+		findIsEmptyNearKnots(fict_knots, ind, x_size, empty);
+
+		// РџСЂРѕРІРµСЂРєР° РµСЃР»Рё СѓР·РµР» РЅРµ РІ СЃРµС‚РєРµ
+		// ----
+		if (nears[s_left] < borders[s_left]) empty[s_left] = 1;
+
+		if (nears[s_right] > borders[s_right])	empty[s_right] = 1;
+
+		if (nears[s_bottom] < borders[s_bottom]) empty[s_bottom] = 1;
+
+		if (nears[s_top] > borders[s_top])	empty[s_top] = 1;
+		// ----
+
+		if (empty[s_left] && empty[s_right] && empty[s_bottom] && empty[s_top])	// Р•СЃР»Рё РІСЃРµ СѓР·Р»С‹ РїСѓСЃС‚С‹Рµ
+		{
+			new_fict_knots->push_back(ind);		// Р—Р°РїРёСЃС‹РІР°РµРј СѓР·РµР» РєР°Рє С„РёРєС‚РёРІРЅС‹Р№
+		}
+		else
+		{
+			new_bound_knots->push_back(ind);	// Р—Р°РїРёСЃС‹РІР°РµРј СѓР·РµР» РєР°Рє РіСЂР°РЅРёС‡РЅС‹Р№
+		}
+	}
+}
+
+void checkFictKnots(vector<int> x_num_mains, vector<int> y_num_mains, vector<int>* fict_knots, vector<int>* bound_knots)
+{
+	int borders[4];
+	borders[s_left] = 0;
+	borders[s_right] = x_num_mains[x_num_mains.size() - 1];
+	borders[s_bottom] = 0;
+	borders[s_top] = y_num_mains[y_num_mains.size() - 1];
+
+	vector<int> new_fict_knots, new_bound_knots;
+	checkAllKnots(borders, *fict_knots, &new_fict_knots, &new_bound_knots);
+
+	// РџРµСЂРµРїСЂРѕРІРµСЂРєР°. РІРґСЂСѓРі СѓР·Р»РѕРІС‹Рµ
+	vector<int> new_new_fict_knots;
+	checkCornerKnots(borders, new_fict_knots, new_fict_knots, &new_new_fict_knots);
+	*fict_knots = new_new_fict_knots;
+
+	// РїРµСЂРµРїСЂРѕРІРµСЂРєР°. РІРґСЂСѓРі СѓР·Р»РѕРІС‹Рµ
+	checkCornerKnots(borders, new_bound_knots, new_new_fict_knots, bound_knots);
 
 }
 
 void AccountBound(vector<double> x, vector<double> y, matrix* A, double* b, vector <int> bound_knots)
 {
-	int all_num_bound_knots = bound_knots.size();
-	for (int i = 0; i < all_num_bound_knots; i++)
+	for (int i = 0; i < bound_knots.size(); i++)
 	{
 		int ind = bound_knots[i];
 
 		int X_ind = ind % x.size();
 		int Y_ind = ind / x.size();
+
 		b[ind] = count_bound_func(x[X_ind], y[Y_ind]);
 
 		A->d_0[ind] = 1.;
@@ -247,28 +436,50 @@ void AccountBound(vector<double> x, vector<double> y, matrix* A, double* b, vect
 			A->du_offset[ind] = 0.;
 			if (ind > A->offset - 1) A->dl_offset[ind - A->offset] = 0.;
 		}
-
-
-
 	}
 }
 
-double Skal(int i, matrix* mat, double* xk) // Скалярное произведение i-ой строки матрицы с вектором xk
+void AccountFict(int x_size, matrix* A, double* b, vector <int> fict_knots)
+{
+	for (int i = 0; i < fict_knots.size(); i++)
+	{
+		int ind = fict_knots[i];
+
+		int X_ind = ind % x_size;
+		int Y_ind = ind / x_size;
+
+		b[ind] = 0.;
+
+		A->d_0[ind] = 1.;
+		if (ind < A->n - 1)
+		{
+			A->du_1[ind] = 0.;
+			if (ind > 0) A->dl_1[ind - 1] = 0.;
+		}
+
+		if (ind < A->n - A->offset)
+		{
+			A->du_offset[ind] = 0.;
+			if (ind > A->offset - 1) A->dl_offset[ind - A->offset] = 0.;
+		}
+	}
+}
+
+double Skal(int i, matrix* mat, double* xk) // РЎРєР°Р»СЏСЂРЅРѕРµ РїСЂРѕРёР·РІРµРґРµРЅРёРµ i-РѕР№ СЃС‚СЂРѕРєРё РјР°С‚СЂРёС†С‹ СЃ РІРµРєС‚РѕСЂРѕРј xk
 {
 	double sum = mat->d_0[i] * xk[i];
 	int n = mat->n;
 	int m = mat->offset - 1;
+
 	if (i > 0) sum += mat->dl_1[i - 1] * xk[i - 1];
 	if (i < n - 1) sum += mat->du_1[i] * xk[i + 1];
 
 	int ind;
 	ind = i - m - 1;
-	if (ind > -1)
-		sum += mat->dl_offset[ind] * xk[ind];
+	if (ind > -1) sum += mat->dl_offset[ind] * xk[ind];
 
 	ind = i + m + 1;
-	if (ind < n)
-		sum += mat->du_offset[i] * xk[ind];
+	if (ind < n) sum += mat->du_offset[i] * xk[ind];
 
 	return sum;
 }
@@ -291,10 +502,11 @@ int Gausse_Zeidel(matrix* mat, double* f, double* xk, double eps, int maxiter)
 {
 	cout << "Gausse Zeidel" << endl;
 	int n = mat->n;
-	int k; // Счётчик итераций
+	int k; // РЎС‡С‘С‚С‡РёРє РёС‚РµСЂР°С†РёР№
 	int i;
 	vector<double> d0 = mat->d_0;
 	double f_norm = 0;
+
 	for (i = 0; i < n; i++)
 		f_norm += f[i] * f[i];
 	f_norm = sqrt(f_norm);
